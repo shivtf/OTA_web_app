@@ -1,30 +1,4 @@
-import React from "react";
-import {
-  Plane,
-  Hotel,
-  Car,
-  Gift,
-  Search,
-  Globe,
-  ChevronDown,
-  ArrowLeftRight,
-  Calendar,
-  Users,
-  Shield,
-  Tag,
-  Zap,
-  Headphones,
-  CalendarCheck,
-  Star,
-  Heart,
-  ChevronRight,
-  Mail,
-  CheckCircle,
-  Clock,
-  CreditCard,
-  Lock,
-  LifeBuoy,
-} from "lucide-react";
+import { Plane, Globe, ChevronDown } from "lucide-react";
 
 function Navbar() {
   return (
