@@ -1,0 +1,886 @@
+// components/SearchBox.jsx
+import { useState, useRef, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Plane,
+  Hotel,
+  Car,
+  Package,
+  Search,
+  ArrowLeftRight,
+  Calendar,
+  Users,
+  ChevronDown,
+  Plus,
+  Minus,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
+
+const TABS = [
+  { id: "flights", label: "Flights", icon: Plane },
+  { id: "hotels", label: "Hotels", icon: Hotel },
+  { id: "cars", label: "Cars", icon: Car },
+];
+
+const CLASSES = ["Economy", "Premium Economy", "Business", "First Class"];
+const DAYS_SHORT = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+const DAYS_FULL = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function parseDate(str) {
+  return str ? new Date(str + "T12:00:00") : null;
+}
+function toISO(d) {
+  if (!d) return "";
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+function fmt(str) {
+  const d = parseDate(str);
+  if (!d) return "";
+  return `${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}, ${d.getFullYear()}`;
+}
+function fmtShort(str) {
+  const d = parseDate(str);
+  if (!d) return "";
+  return `${DAYS_FULL[d.getDay()]}, ${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}`;
+}
+
+const LABEL = {
+  fontSize: 10,
+  fontWeight: 700,
+  color: "#9ca3af",
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  marginBottom: 10,
+};
+const BOX = {
+  border: "1px solid #d1d5db",
+  borderRadius: 8,
+  padding: "8px 10px",
+  fontSize: 14,
+  fontWeight: 600,
+  color: "#111827",
+  background: "#fff",
+  boxSizing: "border-box",
+  width: "100%",
+  outline: "none",
+  fontFamily: "inherit",
+  transition: "border-color 0.15s",
+  cursor: "pointer",
+};
+
+// ── Custom Calendar Picker ────────────────────────────────────────────────────
+function CalendarPicker({ label, value, onChange, minDate }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const selected = parseDate(value);
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const [view, setView] = useState(() => {
+    const d = selected || today;
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+
+  useEffect(() => {
+    const fn = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, []);
+
+  function prevMonth() {
+    setView((v) =>
+      v.month === 0
+        ? { year: v.year - 1, month: 11 }
+        : { year: v.year, month: v.month - 1 },
+    );
+  }
+  function nextMonth() {
+    setView((v) =>
+      v.month === 11
+        ? { year: v.year + 1, month: 0 }
+        : { year: v.year, month: v.month + 1 },
+    );
+  }
+
+  // Build calendar grid
+  const firstDay = new Date(view.year, view.month, 1).getDay();
+  const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  for (let i = 1; i <= daysInMonth; i++) cells.push(i);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const minD = minDate ? parseDate(minDate) : null;
+
+  function pickDay(day) {
+    if (!day) return;
+    const picked = new Date(view.year, view.month, day, 12);
+    if (minD && picked < minD) return;
+    onChange(toISO(picked));
+    setOpen(false);
+  }
+
+  function isSelected(day) {
+    if (!day || !selected) return false;
+    return (
+      selected.getFullYear() === view.year &&
+      selected.getMonth() === view.month &&
+      selected.getDate() === day
+    );
+  }
+  function isToday(day) {
+    if (!day) return false;
+    return (
+      today.getFullYear() === view.year &&
+      today.getMonth() === view.month &&
+      today.getDate() === day
+    );
+  }
+  function isDisabled(day) {
+    if (!day || !minD) return false;
+    const d = new Date(view.year, view.month, day, 12);
+    return d < minD;
+  }
+
+  return (
+    <div ref={ref} style={{ minWidth: 140, position: "relative" }}>
+      <div style={LABEL}>{label}</div>
+
+      {/* Trigger */}
+      <div
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          ...BOX,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 6,
+          borderColor: open ? "#2563eb" : "#d1d5db",
+          userSelect: "none",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: "#111827",
+            lineHeight: 1.2,
+          }}
+        >
+          {value ? fmt(value) : "Select date"}
+        </div>
+        <Calendar
+          style={{
+            width: 15,
+            height: 15,
+            flexShrink: 0,
+            color: open ? "#2563eb" : "#9ca3af",
+            transition: "color 0.15s",
+          }}
+        />
+      </div>
+
+      {/* Calendar Panel */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.97 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              position: "absolute",
+              top: "calc(100% + 8px)",
+              left: 0,
+              width: 300,
+              background: "#fff",
+              border: "1px solid #e5e7eb",
+              borderRadius: 16,
+              boxShadow: "0 12px 40px rgba(0,0,0,0.14)",
+              zIndex: 200,
+              overflow: "hidden",
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                background: "#2563eb",
+                padding: "16px 20px 14px",
+                color: "#fff",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  opacity: 0.75,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  marginBottom: 4,
+                }}
+              >
+                {label}
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>
+                {value ? fmt(value) : "Pick a date"}
+              </div>
+              {value && (
+                <div style={{ fontSize: 13, opacity: 0.8, marginTop: 2 }}>
+                  {fmtShort(value)}
+                </div>
+              )}
+            </div>
+
+            {/* Month nav */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px 16px 8px",
+              }}
+            >
+              <button
+                onClick={prevMonth}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 4,
+                  borderRadius: 6,
+                  color: "#374151",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <ChevronLeft style={{ width: 18, height: 18 }} />
+              </button>
+              <span style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>
+                {MONTHS[view.month]} {view.year}
+              </span>
+              <button
+                onClick={nextMonth}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 4,
+                  borderRadius: 6,
+                  color: "#374151",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <ChevronRight style={{ width: 18, height: 18 }} />
+              </button>
+            </div>
+
+            {/* Day names */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(7,1fr)",
+                padding: "0 12px",
+                gap: 2,
+              }}
+            >
+              {DAYS_SHORT.map((d) => (
+                <div
+                  key={d}
+                  style={{
+                    textAlign: "center",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#9ca3af",
+                    padding: "4px 0",
+                  }}
+                >
+                  {d}
+                </div>
+              ))}
+            </div>
+
+            {/* Grid */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(7,1fr)",
+                padding: "4px 12px 16px",
+                gap: 2,
+              }}
+            >
+              {cells.map((day, i) => {
+                const sel = isSelected(day);
+                const tod = isToday(day);
+                const dis = isDisabled(day);
+                return (
+                  <div
+                    key={i}
+                    onClick={() => !dis && pickDay(day)}
+                    style={{
+                      textAlign: "center",
+                      padding: "7px 0",
+                      borderRadius: 8,
+                      fontSize: 13,
+                      fontWeight: sel ? 700 : 400,
+                      cursor: day && !dis ? "pointer" : "default",
+                      background: sel
+                        ? "#2563eb"
+                        : tod
+                          ? "#eff6ff"
+                          : "transparent",
+                      color: sel
+                        ? "#fff"
+                        : dis
+                          ? "#d1d5db"
+                          : tod
+                            ? "#2563eb"
+                            : day
+                              ? "#111827"
+                              : "transparent",
+                      border:
+                        tod && !sel
+                          ? "1.5px solid #bfdbfe"
+                          : "1.5px solid transparent",
+                      transition: "background 0.12s, color 0.12s",
+                      userSelect: "none",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (day && !dis && !sel)
+                        e.currentTarget.style.background = "#f3f4f6";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!sel)
+                        e.currentTarget.style.background = tod
+                          ? "#eff6ff"
+                          : "transparent";
+                    }}
+                  >
+                    {day || ""}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            <div
+              style={{
+                borderTop: "1px solid #f3f4f6",
+                padding: "10px 16px",
+                display: "flex",
+                justifyContent: "space-between",
+              }}
+            >
+              <button
+                onClick={() => {
+                  onChange("");
+                  setOpen(false);
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: 13,
+                  color: "#6b7280",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                }}
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => {
+                  onChange(toISO(today));
+                  setOpen(false);
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: 13,
+                  color: "#2563eb",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                Today
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Travelers Dropdown ────────────────────────────────────────────────────────
+function TravelersDropdown({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [adults, setAdults] = useState(value.adults);
+  const [children, setChildren] = useState(value.children);
+  const [infants, setInfants] = useState(value.infants);
+  const [cabinClass, setCabinClass] = useState(value.cabinClass);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const fn = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, []);
+
+  useEffect(() => {
+    onChange({ adults, children, infants, cabinClass });
+  }, [adults, children, infants, cabinClass]);
+
+  const total = adults + children + infants;
+  const summary = `${total} Traveler${total !== 1 ? "s" : ""}, ${cabinClass}`;
+
+  const Counter = ({ label, sub, value: val, onInc, onDec, min = 0 }) => (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "10px 0",
+        borderBottom: "1px solid #f3f4f6",
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>
+          {label}
+        </div>
+        {sub && (
+          <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 1 }}>
+            {sub}
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <button
+          onClick={onDec}
+          disabled={val <= min}
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: "50%",
+            border: "1px solid #d1d5db",
+            background: val <= min ? "#f9fafb" : "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: val <= min ? "not-allowed" : "pointer",
+            color: val <= min ? "#d1d5db" : "#374151",
+          }}
+        >
+          <Minus style={{ width: 13, height: 13 }} />
+        </button>
+        <span
+          style={{
+            fontSize: 15,
+            fontWeight: 700,
+            color: "#111827",
+            minWidth: 16,
+            textAlign: "center",
+          }}
+        >
+          {val}
+        </span>
+        <button
+          onClick={onInc}
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: "50%",
+            border: "1px solid #2563eb",
+            background: "#eff6ff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            color: "#2563eb",
+          }}
+        >
+          <Plus style={{ width: 13, height: 13 }} />
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div ref={ref} style={{ minWidth: 200, position: "relative" }}>
+      <div style={LABEL}>Travelers &amp; Class</div>
+      <div
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          ...BOX,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          borderColor: open ? "#2563eb" : "#d1d5db",
+          userSelect: "none",
+        }}
+      >
+        <Users
+          style={{ width: 13, height: 13, color: "#9ca3af", flexShrink: 0 }}
+        />
+        <span
+          style={{
+            flex: 1,
+            fontSize: 14,
+            fontWeight: 600,
+            color: "#111827",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {summary}
+        </span>
+        <ChevronDown
+          style={{
+            width: 13,
+            height: 13,
+            color: "#9ca3af",
+            flexShrink: 0,
+            transform: open ? "rotate(180deg)" : "none",
+            transition: "transform 0.2s",
+          }}
+        />
+      </div>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              position: "absolute",
+              top: "calc(100% + 6px)",
+              left: 0,
+              width: 280,
+              background: "#fff",
+              border: "1px solid #e5e7eb",
+              borderRadius: 12,
+              boxShadow: "0 8px 30px rgba(0,0,0,0.12)",
+              padding: "4px 16px 12px",
+              zIndex: 200,
+            }}
+          >
+            <Counter
+              label="Adults"
+              sub="Age 12+"
+              value={adults}
+              min={1}
+              onInc={() => setAdults((a) => a + 1)}
+              onDec={() => setAdults((a) => Math.max(1, a - 1))}
+            />
+            <Counter
+              label="Children"
+              sub="Age 2–11"
+              value={children}
+              min={0}
+              onInc={() => setChildren((c) => c + 1)}
+              onDec={() => setChildren((c) => Math.max(0, c - 1))}
+            />
+            <Counter
+              label="Infants"
+              sub="Under 2"
+              value={infants}
+              min={0}
+              onInc={() => setInfants((i) => i + 1)}
+              onDec={() => setInfants((i) => Math.max(0, i - 1))}
+            />
+            <div style={{ marginTop: 12 }}>
+              <div style={{ ...LABEL, marginBottom: 8 }}>Cabin class</div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 6,
+                }}
+              >
+                {CLASSES.map((cls) => (
+                  <button
+                    key={cls}
+                    onClick={() => setCabinClass(cls)}
+                    style={{
+                      padding: "7px 10px",
+                      borderRadius: 8,
+                      fontSize: 13,
+                      fontWeight: cabinClass === cls ? 600 : 400,
+                      cursor: "pointer",
+                      textAlign: "center",
+                      border:
+                        cabinClass === cls
+                          ? "1.5px solid #2563eb"
+                          : "1px solid #e5e7eb",
+                      background: cabinClass === cls ? "#eff6ff" : "#fff",
+                      color: cabinClass === cls ? "#2563eb" : "#374151",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    {cls}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={() => setOpen(false)}
+              style={{
+                marginTop: 14,
+                width: "100%",
+                padding: "9px",
+                background: "#2563eb",
+                color: "#fff",
+                border: "none",
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Done
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Main SearchBox ────────────────────────────────────────────────────────────
+export default function SearchBox({ defaultTab = "flights", onSearch }) {
+  const [activeTab, setActiveTab] = useState(defaultTab);
+  const [from, setFrom] = useState("New York (JFK)");
+  const [to, setTo] = useState("Los Angeles (LAX)");
+  const [depart, setDepart] = useState("2025-05-24");
+  const [returnDate, setReturnDate] = useState("2025-05-31");
+  const [showReturn, setShowReturn] = useState(true);
+  const [travelers, setTravelers] = useState({
+    adults: 1,
+    children: 0,
+    infants: 0,
+    cabinClass: "Economy",
+  });
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.2, duration: 0.4 }}
+      style={{ width: "100%", position: "relative", zIndex: 10 }}
+    >
+      {/* ── TABS — white bg terminates after "Cars" ── */}
+      <div
+        style={{
+          display: "inline-flex",
+          background: "#fff",
+          borderRadius: "16px 16px 0 0",
+          paddingLeft: 20,
+          paddingTop: 12,
+          paddingRight: 4,
+        }}
+      >
+        {TABS.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 36px 10px",
+              fontSize: 16,
+              fontWeight: activeTab === id ? 600 : 500,
+              whiteSpace: "nowrap",
+              border: "none",
+              borderBottom:
+                activeTab === id
+                  ? "2px solid #2563eb"
+                  : "2px solid transparent",
+              background: "transparent",
+              color: activeTab === id ? "#2563eb" : "#6b7280",
+              cursor: "pointer",
+              transition: "color 0.15s",
+            }}
+          >
+            <Icon
+              style={{
+                width: 15,
+                height: 15,
+                flexShrink: 0,
+                color: activeTab === id ? "#2563eb" : "#9ca3af",
+              }}
+            />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── FIELDS + FOOTER — full width white card ── */}
+      <div
+        style={{
+          width: "100%",
+          background: "#fff",
+          borderRadius: "0 16px 16px 16px",
+          boxShadow: "0 4px 24px rgba(0,0,0,0.12)",
+          paddingTop: "6px",
+        }}
+      >
+        {/* FIELDS */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            gap: 8,
+            padding: "14px 16px 14px 20px",
+          }}
+        >
+          {/* FROM */}
+          <div style={{ flex: "1 1 0", minWidth: 120 }}>
+            <div style={LABEL}>From</div>
+            <input
+              style={BOX}
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              placeholder="City or airport"
+              onFocus={(e) => (e.target.style.borderColor = "#2563eb")}
+              onBlur={(e) => (e.target.style.borderColor = "#d1d5db")}
+            />
+          </div>
+
+          {/* Swap */}
+          <button
+            onClick={() => {
+              setFrom(to);
+              setTo(from);
+            }}
+            aria-label="Swap"
+            style={{
+              flexShrink: 0,
+              width: 32,
+              height: 32,
+              borderRadius: "50%",
+              border: "1px solid #d1d5db",
+              background: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              marginBottom: 1,
+            }}
+          >
+            <ArrowLeftRight
+              style={{ width: 13, height: 13, color: "#2563eb" }}
+            />
+          </button>
+
+          {/* TO */}
+          <div style={{ flex: "1 1 0", minWidth: 120 }}>
+            <div style={LABEL}>To</div>
+            <input
+              style={BOX}
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              placeholder="City or airport"
+              onFocus={(e) => (e.target.style.borderColor = "#2563eb")}
+              onBlur={(e) => (e.target.style.borderColor = "#d1d5db")}
+            />
+          </div>
+
+          <CalendarPicker label="Depart" value={depart} onChange={setDepart} />
+
+          {showReturn && (
+            <CalendarPicker
+              label="Return"
+              value={returnDate}
+              onChange={setReturnDate}
+              minDate={depart}
+            />
+          )}
+
+          <TravelersDropdown value={travelers} onChange={setTravelers} />
+
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={() =>
+              onSearch?.({
+                tab: activeTab,
+                from,
+                to,
+                depart,
+                returnDate,
+                travelers,
+              })
+            }
+            style={{
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: "#2563eb",
+              color: "#fff",
+              padding: "9px 20px",
+              borderRadius: 10,
+              fontWeight: 600,
+              fontSize: 14,
+              border: "none",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
+            }}
+          >
+            <Search style={{ width: 15, height: 15 }} />
+            Search flights
+          </motion.button>
+        </div>
+
+        {/* FOOTER */}
+        <div style={{ padding: "0 20px 14px" }}>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 7,
+              fontSize: 13,
+              color: "#6b7280",
+              cursor: "pointer",
+              userSelect: "none",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showReturn}
+              onChange={(e) => setShowReturn(e.target.checked)}
+              style={{
+                width: 13,
+                height: 13,
+                accentColor: "#2563eb",
+                cursor: "pointer",
+              }}
+            />
+            Add return trip
+          </label>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
