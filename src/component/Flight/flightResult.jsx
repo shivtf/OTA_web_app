@@ -1,9 +1,9 @@
 // pages/FlightResults/FlightResults.jsx
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeftRight,
-  Calendar,
   ChevronDown,
   ChevronUp,
   Search,
@@ -15,19 +15,867 @@ import {
   Luggage,
   Wifi,
   Plug,
-  RefreshCw,
-  Edit2,
   Leaf,
   AlertCircle,
   Check,
   X,
   SlidersHorizontal,
+  MapPin,
+  Loader2,
+  Calendar,
+  Users,
+  Plus,
+  Minus,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import Navbar from "../Navbar/navbar";
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+
+// ── Date helpers ────────────────────────────────────────────────────────────
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+const DAYS_SHORT = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const DAYS_FULL = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const CLASSES = ["Economy", "Premium Economy", "Business", "First Class"];
+
+function parseDate(str) {
+  return str ? new Date(str + "T12:00:00") : null;
+}
+function toISO(d) {
+  if (!d) return "";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function fmt(str) {
+  const d = parseDate(str);
+  return d
+    ? `${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}, ${d.getFullYear()}`
+    : "";
+}
+function fmtShort(str) {
+  const d = parseDate(str);
+  return d
+    ? `${DAYS_FULL[d.getDay()]}, ${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}`
+    : "";
+}
+
+// ── Shared styles ───────────────────────────────────────────────────────────
+const LABEL = {
+  fontSize: 10,
+  fontWeight: 700,
+  color: "#9ca3af",
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  marginBottom: 6,
+};
+const BOX = {
+  border: "1px solid #d1d5db",
+  borderRadius: 8,
+  padding: "8px 10px",
+  fontSize: 14,
+  fontWeight: 600,
+  color: "#111827",
+  background: "#fff",
+  boxSizing: "border-box",
+  width: "100%",
+  outline: "none",
+  fontFamily: "inherit",
+  transition: "border-color 0.15s",
+  cursor: "text",
+};
+
+// ── Place Autocomplete Input ─────────────────────────────────────────────────
+function PlaceInput({
+  label,
+  value,
+  onChange,
+  placeholder = "City or airport",
+}) {
+  const [query, setQuery] = useState(value?.name || "");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const debounceRef = useRef(null);
+
+  useEffect(() => {
+    setQuery(value?.name || "");
+  }, [value?.name]);
+
+  useEffect(() => {
+    const fn = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, []);
+
+  function handleChange(e) {
+    const q = e.target.value;
+    setQuery(q);
+    onChange(null);
+    clearTimeout(debounceRef.current);
+    if (q.trim().length < 2) {
+      setResults([]);
+      setOpen(false);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(
+          `${BASE_URL}/meta/places/search?q=${encodeURIComponent(q.trim())}`,
+        );
+        const json = await res.json();
+        const places = Array.isArray(json.data)
+          ? json.data
+          : Array.isArray(json)
+            ? json
+            : [];
+        setResults(places);
+        setOpen(places.length > 0);
+      } catch {
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+  }
+
+  function handleSelect(place) {
+    setQuery(`${place.name} (${place.iataCode})`);
+    onChange(place);
+    setOpen(false);
+    setResults([]);
+  }
+
+  const typeIcon = (type) =>
+    type === "airport" ? "✈" : type === "city" ? "🏙" : "📍";
+
+  return (
+    <div
+      ref={ref}
+      style={{ flex: "1 1 0", minWidth: 130, position: "relative" }}
+    >
+      <div style={LABEL}>{label}</div>
+      <div style={{ position: "relative" }}>
+        <input
+          style={{
+            ...BOX,
+            paddingRight: 32,
+            borderColor: open ? "#2563eb" : "#d1d5db",
+          }}
+          value={query}
+          onChange={handleChange}
+          onFocus={() => {
+            if (results.length) setOpen(true);
+          }}
+          placeholder={placeholder}
+          autoComplete="off"
+        />
+        <div
+          style={{
+            position: "absolute",
+            right: 10,
+            top: "50%",
+            transform: "translateY(-50%)",
+            pointerEvents: "none",
+          }}
+        >
+          {loading ? (
+            <Loader2
+              style={{
+                width: 14,
+                height: 14,
+                color: "#9ca3af",
+                animation: "spin 1s linear infinite",
+              }}
+            />
+          ) : (
+            <MapPin style={{ width: 14, height: 14, color: "#9ca3af" }} />
+          )}
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {open && results.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.13 }}
+            style={{
+              position: "absolute",
+              top: "calc(100% + 6px)",
+              left: 0,
+              width: "max(100%, 280px)",
+              background: "#fff",
+              border: "1px solid #e5e7eb",
+              borderRadius: 12,
+              boxShadow: "0 8px 30px rgba(0,0,0,0.13)",
+              zIndex: 500,
+              overflow: "hidden",
+            }}
+          >
+            {results.map((place, i) => (
+              <div
+                key={place.id || i}
+                onClick={() => handleSelect(place)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "10px 14px",
+                  cursor: "pointer",
+                  borderBottom:
+                    i < results.length - 1 ? "1px solid #f3f4f6" : "none",
+                  transition: "background 0.1s",
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = "#f8faff")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "#fff")
+                }
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    background: "#eff6ff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 15,
+                    flexShrink: 0,
+                  }}
+                >
+                  {typeIcon(place.type)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: "#111827",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {place.name}
+                    {place.iataCode && (
+                      <span
+                        style={{
+                          marginLeft: 6,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: "#2563eb",
+                          background: "#eff6ff",
+                          padding: "1px 6px",
+                          borderRadius: 4,
+                        }}
+                      >
+                        {place.iataCode}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 1 }}>
+                    {[place.city, place.country].filter(Boolean).join(", ")}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <style>{`@keyframes spin { from { transform: translateY(-50%) rotate(0deg); } to { transform: translateY(-50%) rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+// ── Calendar Picker ─────────────────────────────────────────────────────────
+function CalendarPicker({ label, value, onChange, minDate }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const selected = parseDate(value);
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const [view, setView] = useState(() => {
+    const d = selected || today;
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+
+  useEffect(() => {
+    const fn = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, []);
+
+  function prevMonth() {
+    setView((v) =>
+      v.month === 0
+        ? { year: v.year - 1, month: 11 }
+        : { year: v.year, month: v.month - 1 },
+    );
+  }
+  function nextMonth() {
+    setView((v) =>
+      v.month === 11
+        ? { year: v.year + 1, month: 0 }
+        : { year: v.year, month: v.month + 1 },
+    );
+  }
+
+  const firstDay = new Date(view.year, view.month, 1).getDay();
+  const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  for (let i = 1; i <= daysInMonth; i++) cells.push(i);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const minD = minDate ? parseDate(minDate) : null;
+
+  function pickDay(day) {
+    if (!day) return;
+    const picked = new Date(view.year, view.month, day, 12);
+    if (minD && picked < minD) return;
+    onChange(toISO(picked));
+    setOpen(false);
+  }
+  const isSelected = (day) =>
+    day &&
+    selected &&
+    selected.getFullYear() === view.year &&
+    selected.getMonth() === view.month &&
+    selected.getDate() === day;
+  const isToday = (day) =>
+    day &&
+    today.getFullYear() === view.year &&
+    today.getMonth() === view.month &&
+    today.getDate() === day;
+  const isDisabled = (day) => {
+    if (!day || !minD) return false;
+    return new Date(view.year, view.month, day, 12) < minD;
+  };
+
+  return (
+    <div ref={ref} style={{ minWidth: 130, position: "relative" }}>
+      <div style={LABEL}>{label}</div>
+      <div
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          ...BOX,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 6,
+          borderColor: open ? "#2563eb" : "#d1d5db",
+          userSelect: "none",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: "#111827",
+            lineHeight: 1.2,
+          }}
+        >
+          {value ? fmt(value) : "Select date"}
+        </div>
+        <Calendar
+          style={{
+            width: 15,
+            height: 15,
+            flexShrink: 0,
+            color: open ? "#2563eb" : "#9ca3af",
+            transition: "color 0.15s",
+          }}
+        />
+      </div>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.97 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              position: "absolute",
+              top: "calc(100% + 8px)",
+              left: 0,
+              width: 300,
+              background: "#fff",
+              border: "1px solid #e5e7eb",
+              borderRadius: 16,
+              boxShadow: "0 12px 40px rgba(0,0,0,0.14)",
+              zIndex: 500,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                background: "#2563eb",
+                padding: "16px 20px 14px",
+                color: "#fff",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  opacity: 0.75,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  marginBottom: 4,
+                }}
+              >
+                {label}
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>
+                {value ? fmt(value) : "Pick a date"}
+              </div>
+              {value && (
+                <div style={{ fontSize: 13, opacity: 0.8, marginTop: 2 }}>
+                  {fmtShort(value)}
+                </div>
+              )}
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px 16px 8px",
+              }}
+            >
+              <button
+                onClick={prevMonth}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 4,
+                  borderRadius: 6,
+                  color: "#374151",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <ChevronLeft style={{ width: 18, height: 18 }} />
+              </button>
+              <span style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>
+                {MONTHS[view.month]} {view.year}
+              </span>
+              <button
+                onClick={nextMonth}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 4,
+                  borderRadius: 6,
+                  color: "#374151",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <ChevronRight style={{ width: 18, height: 18 }} />
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(7,1fr)",
+                padding: "0 12px",
+                gap: 2,
+              }}
+            >
+              {DAYS_SHORT.map((d) => (
+                <div
+                  key={d}
+                  style={{
+                    textAlign: "center",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#9ca3af",
+                    padding: "4px 0",
+                  }}
+                >
+                  {d}
+                </div>
+              ))}
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(7,1fr)",
+                padding: "4px 12px 16px",
+                gap: 2,
+              }}
+            >
+              {cells.map((day, i) => {
+                const sel = isSelected(day),
+                  tod = isToday(day),
+                  dis = isDisabled(day);
+                return (
+                  <div
+                    key={i}
+                    onClick={() => !dis && pickDay(day)}
+                    style={{
+                      textAlign: "center",
+                      padding: "7px 0",
+                      borderRadius: 8,
+                      fontSize: 13,
+                      fontWeight: sel ? 700 : 400,
+                      cursor: day && !dis ? "pointer" : "default",
+                      background: sel
+                        ? "#2563eb"
+                        : tod
+                          ? "#eff6ff"
+                          : "transparent",
+                      color: sel
+                        ? "#fff"
+                        : dis
+                          ? "#d1d5db"
+                          : tod
+                            ? "#2563eb"
+                            : day
+                              ? "#111827"
+                              : "transparent",
+                      border:
+                        tod && !sel
+                          ? "1.5px solid #bfdbfe"
+                          : "1.5px solid transparent",
+                      transition: "background 0.12s, color 0.12s",
+                      userSelect: "none",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (day && !dis && !sel)
+                        e.currentTarget.style.background = "#f3f4f6";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!sel)
+                        e.currentTarget.style.background = tod
+                          ? "#eff6ff"
+                          : "transparent";
+                    }}
+                  >
+                    {day || ""}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div
+              style={{
+                borderTop: "1px solid #f3f4f6",
+                padding: "10px 16px",
+                display: "flex",
+                justifyContent: "space-between",
+              }}
+            >
+              <button
+                onClick={() => {
+                  onChange("");
+                  setOpen(false);
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: 13,
+                  color: "#6b7280",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                }}
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => {
+                  onChange(toISO(today));
+                  setOpen(false);
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: 13,
+                  color: "#2563eb",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                Today
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Travelers Dropdown ───────────────────────────────────────────────────────
+function TravelersDropdown({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [adults, setAdults] = useState(value.adults);
+  const [children, setChildren] = useState(value.children);
+  const [infants, setInfants] = useState(value.infants);
+  const [cabinClass, setCabinClass] = useState(value.cabinClass);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const fn = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, []);
+
+  useEffect(() => {
+    onChange({ adults, children, infants, cabinClass });
+  }, [adults, children, infants, cabinClass]);
+
+  const total = adults + children + infants;
+  const summary = `${total} Traveler${total !== 1 ? "s" : ""}, ${cabinClass}`;
+
+  const Counter = ({ label, sub, value: val, onInc, onDec, min = 0 }) => (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "10px 0",
+        borderBottom: "1px solid #f3f4f6",
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>
+          {label}
+        </div>
+        {sub && (
+          <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 1 }}>
+            {sub}
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <button
+          onClick={onDec}
+          disabled={val <= min}
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: "50%",
+            border: "1px solid #d1d5db",
+            background: val <= min ? "#f9fafb" : "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: val <= min ? "not-allowed" : "pointer",
+            color: val <= min ? "#d1d5db" : "#374151",
+          }}
+        >
+          <Minus style={{ width: 13, height: 13 }} />
+        </button>
+        <span
+          style={{
+            fontSize: 15,
+            fontWeight: 700,
+            color: "#111827",
+            minWidth: 16,
+            textAlign: "center",
+          }}
+        >
+          {val}
+        </span>
+        <button
+          onClick={onInc}
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: "50%",
+            border: "1px solid #2563eb",
+            background: "#eff6ff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            color: "#2563eb",
+          }}
+        >
+          <Plus style={{ width: 13, height: 13 }} />
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div ref={ref} style={{ minWidth: 190, position: "relative" }}>
+      <div style={LABEL}>Travelers &amp; Class</div>
+      <div
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          ...BOX,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          borderColor: open ? "#2563eb" : "#d1d5db",
+          userSelect: "none",
+        }}
+      >
+        <Users
+          style={{ width: 13, height: 13, color: "#9ca3af", flexShrink: 0 }}
+        />
+        <span
+          style={{
+            flex: 1,
+            fontSize: 14,
+            fontWeight: 600,
+            color: "#111827",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {summary}
+        </span>
+        <ChevronDown
+          style={{
+            width: 13,
+            height: 13,
+            color: "#9ca3af",
+            flexShrink: 0,
+            transform: open ? "rotate(180deg)" : "none",
+            transition: "transform 0.2s",
+          }}
+        />
+      </div>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              position: "absolute",
+              top: "calc(100% + 6px)",
+              left: 0,
+              width: 280,
+              background: "#fff",
+              border: "1px solid #e5e7eb",
+              borderRadius: 12,
+              boxShadow: "0 8px 30px rgba(0,0,0,0.12)",
+              padding: "4px 16px 12px",
+              zIndex: 500,
+            }}
+          >
+            <Counter
+              label="Adults"
+              sub="Age 12+"
+              value={adults}
+              min={1}
+              onInc={() => setAdults((a) => a + 1)}
+              onDec={() => setAdults((a) => Math.max(1, a - 1))}
+            />
+            <Counter
+              label="Children"
+              sub="Age 2–11"
+              value={children}
+              min={0}
+              onInc={() => setChildren((c) => c + 1)}
+              onDec={() => setChildren((c) => Math.max(0, c - 1))}
+            />
+            <Counter
+              label="Infants"
+              sub="Under 2"
+              value={infants}
+              min={0}
+              onInc={() => setInfants((i) => i + 1)}
+              onDec={() => setInfants((i) => Math.max(0, i - 1))}
+            />
+            <div style={{ marginTop: 12 }}>
+              <div style={{ ...LABEL, marginBottom: 8 }}>Cabin class</div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 6,
+                }}
+              >
+                {CLASSES.map((cls) => (
+                  <button
+                    key={cls}
+                    onClick={() => setCabinClass(cls)}
+                    style={{
+                      padding: "7px 10px",
+                      borderRadius: 8,
+                      fontSize: 13,
+                      fontWeight: cabinClass === cls ? 600 : 400,
+                      cursor: "pointer",
+                      textAlign: "center",
+                      border:
+                        cabinClass === cls
+                          ? "1.5px solid #2563eb"
+                          : "1px solid #e5e7eb",
+                      background: cabinClass === cls ? "#eff6ff" : "#fff",
+                      color: cabinClass === cls ? "#2563eb" : "#374151",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    {cls}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={() => setOpen(false)}
+              style={{
+                marginTop: 14,
+                width: "100%",
+                padding: "9px",
+                background: "#2563eb",
+                color: "#fff",
+                border: "none",
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Done
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
 function parseDuration(iso) {
-  // "PT2H5M" → "2h 5m"
   if (!iso) return "";
   const h = iso.match(/(\d+)H/)?.[1];
   const m = iso.match(/(\d+)M/)?.[1];
@@ -36,8 +884,7 @@ function parseDuration(iso) {
 
 function fmtTime(isoStr) {
   if (!isoStr) return "";
-  const d = new Date(isoStr);
-  return d.toLocaleTimeString("en-US", {
+  return new Date(isoStr).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -46,8 +893,7 @@ function fmtTime(isoStr) {
 
 function fmtDate(isoStr) {
   if (!isoStr) return "";
-  const d = new Date(isoStr);
-  return d.toLocaleDateString("en-US", {
+  return new Date(isoStr).toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -56,12 +902,10 @@ function fmtDate(isoStr) {
 
 function overnightDays(dep, arr) {
   if (!dep || !arr) return 0;
-  const d1 = new Date(dep);
-  const d2 = new Date(arr);
-  return Math.floor((d2 - d1) / 86400000);
+  return Math.floor((new Date(arr) - new Date(dep)) / 86400000);
 }
 
-// ── Airline Logo ───────────────────────────────────────────────────────────
+// ── Airline Logo ─────────────────────────────────────────────────────────────
 function AirlineLogo({ airline }) {
   const [imgError, setImgError] = useState(false);
   const colors = {
@@ -120,7 +964,7 @@ function AirlineLogo({ airline }) {
   );
 }
 
-// ── Range Slider ───────────────────────────────────────────────────────────
+// ── Range Slider ─────────────────────────────────────────────────────────────
 function RangeSlider({ min, max, value, onChange }) {
   const pct = max === min ? 0 : ((value - min) / (max - min)) * 100;
   return (
@@ -143,10 +987,9 @@ function RangeSlider({ min, max, value, onChange }) {
   );
 }
 
-// ── Flight Card ────────────────────────────────────────────────────────────
-function FlightCard({ offer, index }) {
+// ── Flight Card ───────────────────────────────────────────────────────────────
+function FlightCard({ offer }) {
   const [expanded, setExpanded] = useState(false);
-
   const slice = offer.slices?.[0];
   const segment = slice?.segments?.[0];
   const airline = offer.owner;
@@ -158,7 +1001,6 @@ function FlightCard({ offer, index }) {
   const stops = slice?.stops ?? 0;
   const stopDetail =
     stops > 0 ? `${stops} stop${stops > 1 ? "s" : ""}` : "Non-stop";
-
   const depTime = fmtTime(slice?.departureAt);
   const arrTime = fmtTime(slice?.arrivalAt);
   const duration = parseDuration(slice?.duration);
@@ -166,7 +1008,6 @@ function FlightCard({ offer, index }) {
   const originCode = slice?.origin?.iataCode;
   const destCode = slice?.destination?.iataCode;
   const fareLabel = slice?.fareBrandName;
-
   const checkedBag = baggages.find((b) => b.type === "checked");
   const carryOn = baggages.find((b) => b.type === "carry_on");
   const emissionsKg = pricing?.totalEmissionsKg;
@@ -188,7 +1029,6 @@ function FlightCard({ offer, index }) {
         (e.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.06)")
       }
     >
-      {/* Main row */}
       <div
         style={{
           display: "flex",
@@ -464,7 +1304,7 @@ function FlightCard({ offer, index }) {
           )}
         </div>
 
-        {/* Price + select */}
+        {/* Price */}
         <div
           style={{
             display: "flex",
@@ -512,33 +1352,15 @@ function FlightCard({ offer, index }) {
             Select
           </button>
         </div>
-
-        {/* Expand toggle */}
-        {/* <button
-          onClick={() => setExpanded((p) => !p)}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: "#94A3B8",
-            padding: 4,
-            flexShrink: 0,
-            display: "flex",
-            alignItems: "center",
-          }}
-        >
-          {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-        </button> */}
       </div>
 
-      {/* Conditions row */}
+      {/* Conditions */}
       <div
         style={{
           display: "flex",
           gap: 16,
-          padding: "0 24px 14px",
+          padding: "10px 24px 14px",
           borderTop: "1px solid #F1F5F9",
-          paddingTop: 10,
         }}
       >
         <ConditionBadge
@@ -561,7 +1383,7 @@ function FlightCard({ offer, index }) {
         )}
       </div>
 
-      {/* Expanded details */}
+      {/* Expanded */}
       {expanded && (
         <div
           style={{
@@ -682,7 +1504,6 @@ function FlightCard({ offer, index }) {
                         </div>
                       </div>
                     </div>
-
                     <div
                       style={{
                         display: "flex",
@@ -765,41 +1586,16 @@ function InfoChip({ label, value }) {
   );
 }
 
-// ── Normalize API response regardless of nesting ───────────────────────────
-// SearchBox passes `result: data` where data is the raw fetch JSON.
-// The API can return:
-//   { success, message, data: { offers, filters, slices, ... } }   ← standard
-//   { offers, filters, slices, ... }                                ← unwrapped
-// We handle both.
+// ── Normalize API response ──────────────────────────────────────────────────
 function extractFlightData(result) {
   if (!result) return { offers: [], filters: {}, slices: [], totalOffers: 0 };
-
-  // Log the raw result so we can debug nesting issues in the console
-  console.log("[FlightResults] raw result keys:", Object.keys(result));
-
-  // Handle all possible shapes:
-  //   Shape A: { success, message, data: { offers, filters, ... } }
-  //   Shape B: { offers, filters, ... }
-  //   Shape C: { data: { offers, filters, ... } } (no success wrapper)
   let inner = null;
-
-  if (Array.isArray(result?.data?.offers) && result.data.offers.length >= 0) {
-    // Shape A or C — nested under .data
+  if (Array.isArray(result?.data?.offers) && result.data.offers.length >= 0)
     inner = result.data;
-  } else if (Array.isArray(result?.offers)) {
-    // Shape B — flat
-    inner = result;
-  } else if (result?.data && typeof result.data === "object") {
-    // Fallback: use result.data whatever it has
-    inner = result.data;
-  } else {
-    inner = result;
-  }
-
+  else if (Array.isArray(result?.offers)) inner = result;
+  else if (result?.data && typeof result.data === "object") inner = result.data;
+  else inner = result;
   const offers = Array.isArray(inner?.offers) ? inner.offers : [];
-  console.log("[FlightResults] extracted offers count:", offers.length);
-  console.log("[FlightResults] filters:", inner?.filters);
-
   return {
     offers,
     filters: inner?.filters || {},
@@ -808,21 +1604,83 @@ function extractFlightData(result) {
   };
 }
 
-// ── Main Page ──────────────────────────────────────────────────────────────
+// ── Filter Section ───────────────────────────────────────────────────────────
+function FilterSection({ label, children }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <button
+        onClick={() => setOpen((p) => !p)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          width: "100%",
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          padding: "4px 0 10px",
+          fontSize: 13,
+          fontWeight: 700,
+          color: "#0F172A",
+        }}
+      >
+        {label}
+        {open ? (
+          <ChevronUp size={14} style={{ color: "#94A3B8" }} />
+        ) : (
+          <ChevronDown size={14} style={{ color: "#94A3B8" }} />
+        )}
+      </button>
+      {open && children}
+    </div>
+  );
+}
+
+// ── Main Page ────────────────────────────────────────────────────────────────
 export default function FlightResults() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { searchParams, from, to, returnDate, travelers, result } =
-    location.state || {};
+  const {
+    searchParams,
+    from: initFrom,
+    to: initTo,
+    returnDate: initReturn,
+    travelers: initTravelers,
+    result: initResult,
+  } = location.state || {};
 
+  // ── Search box state (initialized from incoming route state) ──
+  const todayISO = new Date().toISOString().split("T")[0];
+  const returnDayISO = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().split("T")[0];
+  })();
+
+  const [from, setFrom] = useState(initFrom || null);
+  const [to, setTo] = useState(initTo || null);
+  const [depart, setDepart] = useState(searchParams?.departureDate || todayISO);
+  const [returnDate, setReturnDate] = useState(initReturn || returnDayISO);
+  const [showReturn, setShowReturn] = useState(!!initReturn);
+  const [travelers, setTravelers] = useState(
+    initTravelers || {
+      adults: 1,
+      children: 0,
+      infants: 0,
+      cabinClass: "Economy",
+    },
+  );
+  const [searching, setSearching] = useState(false);
+
+  // ── Results state ──
+  const [result, setResult] = useState(initResult || null);
   const { offers, filters, slices, totalOffers } = extractFlightData(result);
-  const sliceInfo = slices?.[0] || {};
 
   const priceMin = Math.floor(parseFloat(filters.priceRange?.min ?? 0));
   const priceMax = Math.ceil(parseFloat(filters.priceRange?.max ?? 1000));
 
   const [activeSort, setActiveSort] = useState("cheapest");
-  // Lazy init so it reads the actual priceMax on first render
   const [maxPrice, setMaxPrice] = useState(() => priceMax);
   const [stopsFilter, setStopsFilter] = useState({
     0: true,
@@ -834,30 +1692,79 @@ export default function FlightResults() {
     (filters.availableAirlines || []).forEach((a) => (init[a] = true));
     return init;
   });
+  const [refundableOnly, setRefundableOnly] = useState(false);
+  const [changeableOnly, setChangeableOnly] = useState(false);
 
-  const BATCH = 8; // cards to show initially and per load
+  const BATCH = 8;
   const [visibleCount, setVisibleCount] = useState(BATCH);
   const sentinelRef = useRef(null);
 
-  // Re-sync visible count when filters/sort change — reset to first batch
   useEffect(() => {
     setVisibleCount(BATCH);
   }, [activeSort, maxPrice, stopsFilter, airlineFilter]);
-
-  // Infinite scroll via IntersectionObserver on a sentinel div
-
-  // Re-sync filter state if offers/filters change (e.g. navigating with new search)
   useEffect(() => {
     if (priceMax > 0) setMaxPrice(priceMax);
   }, [priceMax]);
-
   useEffect(() => {
     const init = {};
     (filters.availableAirlines || []).forEach((a) => (init[a] = true));
     setAirlineFilter(init);
   }, [filters.availableAirlines?.join(",")]);
 
-  // Filter + sort
+  // ── Handle new search ──
+  async function handleSearch() {
+    if (!from?.iataCode || !to?.iataCode) {
+      alert("Please select a valid origin and destination.");
+      return;
+    }
+    if (!depart) {
+      alert("Please select a departure date.");
+      return;
+    }
+    setSearching(true);
+    try {
+      const payload = {
+        origin: from.iataCode,
+        destination: to.iataCode,
+        departureDate: depart,
+        adults: travelers.adults,
+        children: travelers.children,
+        infants: travelers.infants,
+        cabinClass: travelers.cabinClass.toLowerCase().replace(/ /g, "_"),
+      };
+      const res = await fetch(`${BASE_URL}/flights/search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      // Update results in-place without navigating away
+      setResult(data);
+      setVisibleCount(BATCH);
+      // Also update the browser history state so a refresh works
+      navigate("/flights/results", {
+        state: {
+          searchParams: payload,
+          from,
+          to,
+          returnDate: showReturn ? returnDate : null,
+          travelers,
+          result: data,
+        },
+        replace: true,
+      });
+    } catch (err) {
+      console.error("Flight search error:", err);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function handleSwap() {
+    setFrom(to);
+    setTo(from);
+  }
+
   const processed = useMemo(() => {
     let list = offers.filter((o) => {
       const price = parseFloat(o.pricing?.totalAmount);
@@ -867,46 +1774,53 @@ export default function FlightResults() {
       if (!stopsFilter[stopsKey]) return false;
       const airline = o.owner?.iataCode;
       if (airlineFilter[airline] === false) return false;
+      if (refundableOnly && !o.conditions?.refundable) return false;
+      if (changeableOnly && !o.conditions?.changeable) return false;
       return true;
     });
-
-    if (activeSort === "cheapest") {
+    if (activeSort === "cheapest")
       list = [...list].sort(
         (a, b) =>
           parseFloat(a.pricing?.totalAmount) -
           parseFloat(b.pricing?.totalAmount),
       );
-    } else if (activeSort === "fastest") {
-      list = [...list].sort((a, b) => {
-        const durA = a.slices?.[0]?.duration || "PT99H";
-        const durB = b.slices?.[0]?.duration || "PT99H";
-        return durA.localeCompare(durB);
-      });
-    } else {
-      // best: emissions-adjusted price
-      list = [...list].sort((a, b) => {
-        const scoreA =
+    else if (activeSort === "fastest")
+      list = [...list].sort((a, b) =>
+        (a.slices?.[0]?.duration || "PT99H").localeCompare(
+          b.slices?.[0]?.duration || "PT99H",
+        ),
+      );
+    else if (activeSort === "refundable")
+      list = list.filter((o) => o.conditions?.refundable);
+    else if (activeSort === "changeable")
+      list = list.filter((o) => o.conditions?.changeable);
+    else
+      list = [...list].sort(
+        (a, b) =>
           parseFloat(a.pricing?.totalAmount) +
-          (parseInt(a.pricing?.totalEmissionsKg) || 0) * 0.05;
-        const scoreB =
-          parseFloat(b.pricing?.totalAmount) +
-          (parseInt(b.pricing?.totalEmissionsKg) || 0) * 0.05;
-        return scoreA - scoreB;
-      });
-    }
+          (parseInt(a.pricing?.totalEmissionsKg) || 0) * 0.05 -
+          (parseFloat(b.pricing?.totalAmount) +
+            (parseInt(b.pricing?.totalEmissionsKg) || 0) * 0.05),
+      );
     return list;
-  }, [offers, maxPrice, stopsFilter, airlineFilter, activeSort]);
+  }, [
+    offers,
+    maxPrice,
+    stopsFilter,
+    airlineFilter,
+    activeSort,
+    refundableOnly,
+    changeableOnly,
+  ]);
 
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
-          setVisibleCount((prev) => prev + BATCH);
-        }
+        if (entries[0].isIntersecting) setVisibleCount((prev) => prev + BATCH);
       },
-      { rootMargin: "200px" }, // trigger 200px before sentinel hits viewport
+      { rootMargin: "200px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -926,21 +1840,15 @@ export default function FlightResults() {
         : "",
     [offers],
   );
-
   const allAirlines = filters.availableAirlines || [];
-
-  // Build a map of iataCode -> airline name from the offers themselves
   const airlineNameMap = useMemo(() => {
     const map = {};
     offers.forEach((o) => {
-      if (o.owner?.iataCode && o.owner?.name) {
+      if (o.owner?.iataCode && o.owner?.name)
         map[o.owner.iataCode] = o.owner.name;
-      }
     });
     return map;
   }, [offers]);
-
-  // Count offers per airline for the filter sidebar
   const airlineOfferCount = useMemo(() => {
     const counts = {};
     offers.forEach((o) => {
@@ -958,174 +1866,140 @@ export default function FlightResults() {
         fontFamily: "Inter, system-ui, sans-serif",
       }}
     >
-      {/* Search bar */}
+      <Navbar autoHide={false} />
+      <div style={{ height: 56 }} />
+
+      {/* ── Search bar ── */}
       <div
         style={{
           background: "#fff",
           borderBottom: "1px solid #E5E7EB",
-          padding: "16px 32px",
-          position: "sticky",
-          top: 0,
-          zIndex: 50,
+          padding: "24px 32px 0",
         }}
       >
         <div style={{ maxWidth: 1400, margin: "0 auto" }}>
+          {/* Fields row */}
           <div
             style={{
               display: "flex",
-              alignItems: "center",
-              gap: 20,
-              flexWrap: "wrap",
+              alignItems: "flex-end",
+              gap: 8,
+              paddingBottom: 12,
             }}
           >
-            {/* From → To */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div>
-                <div
-                  style={{
-                    fontSize: 10,
-                    color: "#94A3B8",
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                  }}
-                >
-                  From
-                </div>
-                <div
-                  style={{ fontSize: 16, fontWeight: 800, color: "#0F172A" }}
-                >
-                  {from?.iataCode || sliceInfo.origin}
-                </div>
-                <div style={{ fontSize: 11, color: "#64748B" }}>
-                  {from?.name || ""}
-                </div>
-              </div>
-              <div style={{ color: "#CBD5E1" }}>
-                <ArrowLeftRight size={16} />
-              </div>
-              <div>
-                <div
-                  style={{
-                    fontSize: 10,
-                    color: "#94A3B8",
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                  }}
-                >
-                  To
-                </div>
-                <div
-                  style={{ fontSize: 16, fontWeight: 800, color: "#0F172A" }}
-                >
-                  {to?.iataCode || sliceInfo.destination}
-                </div>
-                <div style={{ fontSize: 11, color: "#64748B" }}>
-                  {to?.name || ""}
-                </div>
-              </div>
-            </div>
+            <PlaceInput
+              label="From"
+              value={from}
+              onChange={setFrom}
+              placeholder="City or airport"
+            />
 
-            <div style={{ width: 1, height: 36, background: "#E5E7EB" }} />
+            {/* Swap */}
+            <button
+              onClick={handleSwap}
+              aria-label="Swap"
+              style={{
+                flexShrink: 0,
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                border: "1px solid #d1d5db",
+                background: "#fff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                marginBottom: 1,
+              }}
+            >
+              <ArrowLeftRight
+                style={{ width: 13, height: 13, color: "#2563eb" }}
+              />
+            </button>
 
-            <div>
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "#94A3B8",
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                }}
-              >
-                Depart
-              </div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>
-                {searchParams?.departureDate
-                  ? new Date(
-                      searchParams.departureDate + "T12:00:00",
-                    ).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })
-                  : "—"}
-              </div>
-            </div>
+            <PlaceInput
+              label="To"
+              value={to}
+              onChange={setTo}
+              placeholder="City or airport"
+            />
 
-            {returnDate && (
-              <>
-                <div style={{ width: 1, height: 36, background: "#E5E7EB" }} />
-                <div>
-                  <div
-                    style={{
-                      fontSize: 10,
-                      color: "#94A3B8",
-                      fontWeight: 600,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.06em",
-                    }}
-                  >
-                    Return
-                  </div>
-                  <div
-                    style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}
-                  >
-                    {new Date(returnDate + "T12:00:00").toLocaleDateString(
-                      "en-US",
-                      { month: "short", day: "numeric", year: "numeric" },
-                    )}
-                  </div>
-                </div>
-              </>
+            <CalendarPicker
+              label="Depart"
+              value={depart}
+              onChange={setDepart}
+            />
+
+            {showReturn && (
+              <CalendarPicker
+                label="Return"
+                value={returnDate}
+                onChange={setReturnDate}
+                minDate={depart}
+              />
             )}
 
-            <div style={{ width: 1, height: 36, background: "#E5E7EB" }} />
+            <TravelersDropdown value={travelers} onChange={setTravelers} />
 
-            <div>
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "#94A3B8",
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                }}
-              >
-                Travelers
-              </div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>
-                {(travelers?.adults || 1) +
-                  (travelers?.children || 0) +
-                  (travelers?.infants || 0)}{" "}
-                · {travelers?.cabinClass || "Economy"}
-              </div>
-            </div>
-
-            <button
-              onClick={() => navigate(-1)}
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={handleSearch}
+              disabled={searching}
               style={{
-                marginLeft: "auto",
+                flexShrink: 0,
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
-                background: "#2563EB",
+                background: searching ? "#93c5fd" : "#2563eb",
                 color: "#fff",
-                border: "none",
+                padding: "9px 20px",
                 borderRadius: 10,
-                padding: "9px 18px",
-                fontWeight: 700,
-                fontSize: 13,
-                cursor: "pointer",
+                fontWeight: 600,
+                fontSize: 14,
+                border: "none",
+                cursor: searching ? "not-allowed" : "pointer",
+                whiteSpace: "nowrap",
+                boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
+                transition: "background 0.2s",
               }}
             >
-              <Edit2 size={14} /> Edit search
-            </button>
+              <Search style={{ width: 15, height: 15 }} />
+              {searching ? "Searching…" : "Search flights"}
+            </motion.button>
+          </div>
+
+          {/* Return trip toggle */}
+          <div style={{ paddingBottom: 10 }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+                fontSize: 13,
+                color: "#6b7280",
+                cursor: "pointer",
+                userSelect: "none",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={showReturn}
+                onChange={(e) => setShowReturn(e.target.checked)}
+                style={{
+                  width: 13,
+                  height: 13,
+                  accentColor: "#2563eb",
+                  cursor: "pointer",
+                }}
+              />
+              Add return trip
+            </label>
           </div>
         </div>
       </div>
 
+      {/* ── Main content ── */}
       <div
         style={{
           maxWidth: 1400,
@@ -1135,7 +2009,7 @@ export default function FlightResults() {
           gap: 24,
         }}
       >
-        {/* ── Left filter sidebar ── */}
+        {/* ── Filter sidebar ── */}
         <div style={{ width: 260, flexShrink: 0 }}>
           <div
             style={{
@@ -1181,13 +2055,14 @@ export default function FlightResults() {
                   const a = {};
                   allAirlines.forEach((k) => (a[k] = true));
                   setAirlineFilter(a);
+                  setRefundableOnly(false);
+                  setChangeableOnly(false);
                 }}
               >
                 Clear all
               </button>
             </div>
 
-            {/* Stops */}
             <FilterSection label="Stops">
               {[
                 { key: 0, label: "Non-stop" },
@@ -1218,55 +2093,91 @@ export default function FlightResults() {
               ))}
             </FilterSection>
 
+            <FilterSection label="Ticket Flexibility">
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 8,
+                  cursor: "pointer",
+                  fontSize: 13,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={refundableOnly}
+                  onChange={(e) => setRefundableOnly(e.target.checked)}
+                  style={{ accentColor: "#2563EB" }}
+                />
+                <span style={{ color: "#0F172A", flex: 1 }}>
+                  Refundable only
+                </span>
+              </label>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 8,
+                  cursor: "pointer",
+                  fontSize: 13,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={changeableOnly}
+                  onChange={(e) => setChangeableOnly(e.target.checked)}
+                  style={{ accentColor: "#2563EB" }}
+                />
+                <span style={{ color: "#0F172A", flex: 1 }}>
+                  Changeable only
+                </span>
+              </label>
+            </FilterSection>
+
             <div style={{ borderTop: "1px solid #F1F5F9", margin: "14px 0" }} />
 
-            {/* Airlines */}
             {allAirlines.length > 0 && (
               <>
                 <FilterSection label="Airlines">
-                  {allAirlines.map((code) => {
-                    const displayName = airlineNameMap[code] || code;
-                    const count = airlineOfferCount[code] || 0;
-                    return (
-                      <label
-                        key={code}
+                  {allAirlines.map((code) => (
+                    <label
+                      key={code}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        marginBottom: 8,
+                        cursor: "pointer",
+                        fontSize: 13,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={airlineFilter[code] !== false}
+                        onChange={(e) =>
+                          setAirlineFilter((p) => ({
+                            ...p,
+                            [code]: e.target.checked,
+                          }))
+                        }
+                        style={{ accentColor: "#2563EB" }}
+                      />
+                      <span style={{ color: "#0F172A", flex: 1, fontSize: 12 }}>
+                        {airlineNameMap[code] || code}
+                      </span>
+                      <span
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          marginBottom: 8,
-                          cursor: "pointer",
-                          fontSize: 13,
+                          fontSize: 10,
+                          color: "#94A3B8",
+                          fontWeight: 600,
                         }}
                       >
-                        <input
-                          type="checkbox"
-                          checked={airlineFilter[code] !== false}
-                          onChange={(e) =>
-                            setAirlineFilter((p) => ({
-                              ...p,
-                              [code]: e.target.checked,
-                            }))
-                          }
-                          style={{ accentColor: "#2563EB" }}
-                        />
-                        <span
-                          style={{ color: "#0F172A", flex: 1, fontSize: 12 }}
-                        >
-                          {displayName}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 10,
-                            color: "#94A3B8",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {count}
-                        </span>
-                      </label>
-                    );
-                  })}
+                        {airlineOfferCount[code] || 0}
+                      </span>
+                    </label>
+                  ))}
                 </FilterSection>
                 <div
                   style={{ borderTop: "1px solid #F1F5F9", margin: "14px 0" }}
@@ -1274,7 +2185,6 @@ export default function FlightResults() {
               </>
             )}
 
-            {/* Price */}
             <FilterSection label="Max price">
               <div
                 style={{
@@ -1302,7 +2212,6 @@ export default function FlightResults() {
 
         {/* ── Results ── */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Header */}
           <div
             style={{
               display: "flex",
@@ -1353,7 +2262,9 @@ export default function FlightResults() {
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveSort(tab.id)}
+                onClick={() =>
+                  setActiveSort((prev) => (prev === tab.id ? null : tab.id))
+                }
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -1420,22 +2331,6 @@ export default function FlightResults() {
                 No flights are available for this route and date. Try different
                 dates or nearby airports.
               </div>
-              <button
-                onClick={() => navigate(-1)}
-                style={{
-                  marginTop: 18,
-                  background: "#2563EB",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 10,
-                  padding: "10px 24px",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                Edit search
-              </button>
             </div>
           ) : processed.length === 0 ? (
             <div
@@ -1472,7 +2367,6 @@ export default function FlightResults() {
                 ))}
               </div>
 
-              {/* Sentinel — IntersectionObserver watches this */}
               {visibleCount < processed.length && (
                 <div
                   ref={sentinelRef}
@@ -1484,7 +2378,6 @@ export default function FlightResults() {
                     gap: 12,
                   }}
                 >
-                  {/* Skeleton cards while loading next batch */}
                   {[1, 2].map((n) => (
                     <div
                       key={n}
@@ -1509,7 +2402,6 @@ export default function FlightResults() {
                 </div>
               )}
 
-              {/* End of results */}
               {visibleCount >= processed.length && processed.length > BATCH && (
                 <div style={{ padding: "24px 0", textAlign: "center" }}>
                   <div
@@ -1521,10 +2413,7 @@ export default function FlightResults() {
               )}
 
               <style>{`
-                @keyframes shimmer {
-                  0% { background-position: 200% 0; }
-                  100% { background-position: -200% 0; }
-                }
+                @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
               `}</style>
             </>
           )}
@@ -1540,7 +2429,6 @@ export default function FlightResults() {
             gap: 16,
           }}
         >
-          {/* Why book */}
           <div
             style={{
               background: "#fff",
@@ -1614,7 +2502,6 @@ export default function FlightResults() {
             ))}
           </div>
 
-          {/* Offer expiry notice */}
           {offers[0]?.expiresAt && (
             <div
               style={{
@@ -1649,39 +2536,6 @@ export default function FlightResults() {
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── Filter section wrapper ─────────────────────────────────────────────────
-function FilterSection({ label, children }) {
-  const [open, setOpen] = useState(true);
-  return (
-    <div style={{ marginBottom: 4 }}>
-      <button
-        onClick={() => setOpen((p) => !p)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          width: "100%",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          padding: "4px 0 10px",
-          fontSize: 13,
-          fontWeight: 700,
-          color: "#0F172A",
-        }}
-      >
-        {label}
-        {open ? (
-          <ChevronUp size={14} style={{ color: "#94A3B8" }} />
-        ) : (
-          <ChevronDown size={14} style={{ color: "#94A3B8" }} />
-        )}
-      </button>
-      {open && children}
     </div>
   );
 }

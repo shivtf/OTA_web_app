@@ -12,9 +12,10 @@ export default function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/flights/results" element={<FlightResults />} />
+        <Route path="/flights" element={<FlightResults />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
-        <Route path="/hotelsPage" element={<HotelsPage />} />
+        <Route path="/hotels" element={<HotelsPage />} />
       </Routes>
     </BrowserRouter>
   );
