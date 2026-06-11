@@ -3,6 +3,7 @@ import Dashboard from "./component/Dashboard/dashboard";
 import FlightResults from "./component/Flight/flightResult";
 import LoginPage from "./component/pages/LoginPage";
 import RegisterPage from "./component/pages/RegisterPage";
+import HotelsPage from "./component/Hotel/HotelsPage";
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
         <Route path="/flights/results" element={<FlightResults />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/hotelsPage" element={<HotelsPage />} />
       </Routes>
     </BrowserRouter>
   );
